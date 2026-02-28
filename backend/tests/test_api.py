@@ -1,56 +1,105 @@
 import os
 import tempfile
 from fastapi.testclient import TestClient
-from main import app
-from scoring import calculate_score
+
+from backend.app.main import app
+from backend.app.scoring import calculate_score
 
 client = TestClient(app)
 
 
-# -------------------------------
-# 1️⃣ Test Health Endpoint
-# -------------------------------
+# ---------------------------
+# 1️⃣ Health Check
+# ---------------------------
 def test_home():
     response = client.get("/")
     assert response.status_code == 200
     assert "message" in response.json()
 
 
-# -------------------------------
-# 2️⃣ Test Resume Upload
-# -------------------------------
+# ---------------------------
+# 2️⃣ Upload Resume
+# ---------------------------
 def test_upload_resume():
 
-    # Create temporary fake PDF
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-    temp_file.write(b"%PDF-1.4 fake content")
-    temp_file.close()
+    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    temp.write(b"%PDF-1.4 fake content for testing")
+    temp.close()
 
-    with open(temp_file.name, "rb") as f:
+    with open(temp.name, "rb") as f:
         response = client.post(
             "/upload",
-            files={"file": ("test.pdf", f, "application/pdf")}
+            files={"file": ("resume.pdf", f, "application/pdf")}
         )
 
-    os.unlink(temp_file.name)
+    os.unlink(temp.name)
 
     assert response.status_code == 200
     assert "parsed" in response.json()
+    assert "skills" in response.json()["parsed"]
 
 
-# -------------------------------
-# 3️⃣ Test Ranking Endpoint
-# -------------------------------
+# ---------------------------
+# 3️⃣ Upload Reject Non-PDF
+# ---------------------------
+def test_upload_invalid_file():
+
+    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+    temp.write(b"text file")
+    temp.close()
+
+    with open(temp.name, "rb") as f:
+        response = client.post(
+            "/upload",
+            files={"file": ("resume.txt", f, "text/plain")}
+        )
+
+    os.unlink(temp.name)
+
+    assert response.status_code == 400
+
+
+# ---------------------------
+# 4️⃣ Ranking Endpoint
+# ---------------------------
 def test_rank_endpoint():
+
     response = client.get("/rank")
+
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
 
-# -------------------------------
-# 4️⃣ Test Scoring Logic
-# -------------------------------
-def test_scoring_logic():
+# ---------------------------
+# 5️⃣ Stats Endpoint
+# ---------------------------
+def test_stats():
+
+    response = client.get("/stats")
+
+    data = response.json()
+
+    assert response.status_code == 200
+    assert "total_candidates" in data
+    assert "average_score" in data
+    assert "top_score" in data
+
+
+# ---------------------------
+# 6️⃣ Clear Database
+# ---------------------------
+def test_clear():
+
+    response = client.delete("/clear")
+
+    assert response.status_code == 200
+    assert "Database cleared" in response.json()["message"]
+
+
+# ---------------------------
+# 7️⃣ Score Logic
+# ---------------------------
+def test_calculate_score():
 
     candidate = {
         "skills": ["Python", "SQL"],
@@ -62,5 +111,4 @@ def test_scoring_logic():
 
     score = calculate_score(candidate, job_skills)
 
-    assert score >= 0
-    assert score <= 1
+    assert 0 <= score <= 1

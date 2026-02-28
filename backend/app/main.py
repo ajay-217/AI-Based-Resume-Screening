@@ -4,8 +4,8 @@ import shutil
 import os
 import uuid
 
-from parser import parse_resume
-from scoring import rank_candidates
+from backend.app.parser import parse_resume
+from backend.app.scoring import rank_candidates
 
 app = FastAPI(title="AI Resume Screening")
 
