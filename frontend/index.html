@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>ResumeRank AI</title>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
 body {
-  font-family: Arial, sans-serif;
+  font-family: "Segoe UI", Arial, sans-serif;
   margin: 0;
-  background: #f4f6f8;
-  color: #333;
+  background: #f4f6f9;
+  color: #2c3e50;
 }
 
 header {
@@ -19,7 +21,7 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid #e6e9ed;
 }
 
 header h1 {
@@ -27,8 +29,12 @@ header h1 {
   font-size: 22px;
 }
 
+header small {
+  color: #7f8c8d;
+}
+
 header span {
-  background: #e8f5f3;
+  background: #ecf0f1;
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 12px;
@@ -48,14 +54,14 @@ header span {
 .card {
   background: white;
   padding: 20px;
-  border-radius: 10px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
 .card h3 {
-  margin: 0 0 10px 0;
-  font-size: 14px;
-  color: gray;
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: #7f8c8d;
 }
 
 .card h2 {
@@ -65,60 +71,94 @@ header span {
 
 .upload-box {
   background: white;
-  border: 2px dashed #ccc;
+  border: 2px dashed #d5d8dc;
   padding: 40px;
   text-align: center;
   border-radius: 12px;
   cursor: pointer;
   margin-bottom: 40px;
+  transition: 0.3s;
 }
 
 .upload-box:hover {
-  background: #fafafa;
+  background: #fafbfc;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   background: white;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
 th, td {
   padding: 14px;
   text-align: left;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #ecf0f1;
 }
 
 th {
   background: #f8f9fa;
   font-size: 13px;
+  color: #7f8c8d;
 }
 
 .progress {
-  height: 8px;
-  background: #eee;
+  height: 6px;
+  background: #ecf0f1;
   border-radius: 6px;
   overflow: hidden;
+  margin-top: 5px;
 }
 
 .progress-bar {
-  height: 8px;
-  background: #1abc9c;
+  height: 6px;
+  background: #48C9B0;
 }
 
 .badge {
-  background: #eef2f7;
+  background: #ecf0f1;
   padding: 4px 8px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 11px;
   margin-right: 5px;
   display: inline-block;
 }
 
+.chart-section {
+  margin-top: 60px;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 25px;
+}
+
+.chart-card {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.chart-card h3 {
+  margin-bottom: 15px;
+  font-size: 16px;
+}
+
+.single-chart {
+  margin-top: 30px;
+}
+
+canvas {
+  height: 250px !important;
+}
 </style>
 </head>
+
 <body>
 
 <header>
@@ -155,7 +195,7 @@ th {
 
   <div class="upload-box" onclick="document.getElementById('fileInput').click()">
     <h3>Drop PDF resumes here</h3>
-    <p>or click to browse</p>
+    <p>or click to browse • supports multiple files</p>
     <input type="file" id="fileInput" style="display:none" accept=".pdf" multiple onchange="uploadFiles(event)">
   </div>
 
@@ -165,18 +205,41 @@ th {
         <th>#</th>
         <th>Candidate</th>
         <th>Skills</th>
-        <th>Exp</th>
-        <th>Score</th>
+        <th>Experience</th>
+        <th>Final Score</th>
       </tr>
     </thead>
     <tbody id="candidateTable"></tbody>
   </table>
+
+  <div class="chart-section">
+
+    <div class="chart-grid">
+      <div class="chart-card">
+        <h3>Candidate Ranking</h3>
+        <canvas id="rankingChart"></canvas>
+      </div>
+
+      <div class="chart-card">
+        <h3>Score Trend</h3>
+        <canvas id="scoreChart"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-card single-chart">
+      <h3>Skill Distribution</h3>
+      <canvas id="skillChart"></canvas>
+    </div>
+
+  </div>
 
 </div>
 
 <script>
 
 const API = "http://127.0.0.1:8000";
+
+let rankingChart, scoreChart, skillChart;
 
 async function uploadFiles(event) {
   const files = event.target.files;
@@ -195,6 +258,7 @@ async function uploadFiles(event) {
 }
 
 async function loadData() {
+
   const statsRes = await fetch(API + "/stats");
   const stats = await statsRes.json();
 
@@ -209,9 +273,19 @@ async function loadData() {
   table.innerHTML = "";
 
   let uniqueSkills = new Set();
+  let skillFrequency = {};
+  let names = [];
+  let scores = [];
 
   ranked.forEach((c, index) => {
-    c.skills.forEach(s => uniqueSkills.add(s));
+
+    names.push(c.name);
+    scores.push((c.score * 100).toFixed(2));
+
+    c.skills.forEach(s => {
+      uniqueSkills.add(s);
+      skillFrequency[s] = (skillFrequency[s] || 0) + 1;
+    });
 
     const row = `
       <tr>
@@ -220,12 +294,12 @@ async function loadData() {
         <td>
           ${c.skills.map(skill => `<span class="badge">${skill}</span>`).join("")}
         </td>
-        <td>${c.experience}</td>
+        <td>${c.experience} yrs</td>
         <td>
+          ${(c.score * 100).toFixed(2)}
           <div class="progress">
             <div class="progress-bar" style="width:${c.score * 100}%"></div>
           </div>
-          ${c.score}
         </td>
       </tr>
     `;
@@ -234,6 +308,67 @@ async function loadData() {
   });
 
   document.getElementById("uniqueSkills").innerText = uniqueSkills.size;
+
+  generateCharts(names, scores, skillFrequency);
+}
+
+function generateCharts(names, scores, skillFrequency) {
+
+  if (rankingChart) rankingChart.destroy();
+  if (scoreChart) scoreChart.destroy();
+  if (skillChart) skillChart.destroy();
+
+  rankingChart = new Chart(document.getElementById("rankingChart"), {
+    type: "bar",
+    data: {
+      labels: names,
+      datasets: [{
+        data: scores,
+        backgroundColor: "#48C9B0"
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  scoreChart = new Chart(document.getElementById("scoreChart"), {
+    type: "line",
+    data: {
+      labels: names,
+      datasets: [{
+        data: scores,
+        borderColor: "#5D9CEC",
+        backgroundColor: "rgba(93,156,236,0.1)",
+        tension: 0.4,
+        fill: true
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  skillChart = new Chart(document.getElementById("skillChart"), {
+    type: "doughnut",
+    data: {
+      labels: Object.keys(skillFrequency),
+      datasets: [{
+        data: Object.values(skillFrequency),
+        backgroundColor: [
+          "#34495E",
+          "#5D9CEC",
+          "#48C9B0",
+          "#AAB7B8",
+          "#85929E",
+          "#95A5A6"
+        ]
+      }]
+    },
+    options: {
+      plugins: { legend: { position: "bottom" } }
+    }
+  });
 }
 
 loadData();
