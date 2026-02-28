@@ -1,6 +1,0 @@
-fastapi
-uvicorn
-spacy
-pdfplumber
-pytest
-python-multipart
