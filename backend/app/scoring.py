@@ -1,24 +1,38 @@
-def calculate_score(candidate, job_skills):
+def calculate_score(candidate: dict, job_skills: list) -> float:
 
     if not job_skills:
-        return 0
+        return 0.0
 
-    skill_match = len(
-        set(candidate["skills"]) &
-        set(job_skills)
-    ) / len(job_skills)
+    candidate_skills = [skill.lower() for skill in candidate.get("skills", [])]
+    required_skills = [skill.lower() for skill in job_skills]
 
-    exp_score = candidate["experience"] * 0.1
-    edu_score = candidate["education"]
+    matched = len(set(candidate_skills) & set(required_skills))
+    skill_ratio = matched / len(required_skills)
 
-    score = (skill_match*0.5) + (exp_score*0.3) + (edu_score*0.2)
+    experience = candidate.get("experience", 0)
+    exp_ratio = min(experience / 5, 1)  # cap at 5 years
 
-    return round(score,2)
+    education = candidate.get("education", 0)
+
+    final_score = (
+        (skill_ratio * 0.5) +
+        (exp_ratio * 0.3) +
+        (education * 0.2)
+    )
+
+    return round(final_score, 2)
 
 
-def rank_candidates(candidates, job_skills):
+def rank_candidates(candidates: list, job_skills: list) -> list:
 
-    for c in candidates:
-        c["score"] = calculate_score(c, job_skills)
+    ranked = []
 
-    return sorted(candidates, key=lambda x:x["score"], reverse=True)
+    for candidate in candidates:
+        score = calculate_score(candidate, job_skills)
+
+        updated_candidate = candidate.copy()
+        updated_candidate["score"] = score
+
+        ranked.append(updated_candidate)
+
+    return sorted(ranked, key=lambda x: x["score"], reverse=True)

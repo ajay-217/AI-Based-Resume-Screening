@@ -1,6 +1,8 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import shutil, os
+import shutil
+import os
+import uuid
 
 from parser import parse_resume
 from scoring import rank_candidates
@@ -16,41 +18,73 @@ app.add_middleware(
 
 DATABASE = []
 
+JOB_SKILLS = [
+    "Python", "SQL", "Machine Learning",
+    "Data Analysis", "TensorFlow"
+]
+
+
 @app.get("/")
 def home():
-    return {"msg":"API Running"}
+    return {"message": "AI Resume Screening API Running"}
+
 
 # 1️⃣ Upload Resume
 @app.post("/upload")
-async def upload(file:UploadFile=File(...)):
-    os.makedirs("uploads",exist_ok=True)
-    path=f"uploads/{file.filename}"
+async def upload(file: UploadFile = File(...)):
 
-    with open(path,"wb") as buffer:
-        shutil.copyfileobj(file.file,buffer)
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files supported")
 
-    data=parse_resume(path)
-    DATABASE.append(data)
+    os.makedirs("uploads", exist_ok=True)
+    path = f"uploads/{file.filename}"
 
-    return {"parsed":data}
+    with open(path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    parsed_data = parse_resume(path)
+
+    candidate = {
+        "id": str(uuid.uuid4()),
+        "name": file.filename.replace(".pdf", "").replace("_", " "),
+        **parsed_data
+    }
+
+    DATABASE.append(candidate)
+
+    return {"parsed": candidate}
+
 
 # 2️⃣ Rank Candidates
-@app.post("/rank")
-def rank(skills:list[str]):
-    return rank_candidates(DATABASE,skills)
+@app.get("/rank")
+def rank():
+    return rank_candidates(DATABASE, JOB_SKILLS)
+
 
 # 3️⃣ Get Candidates
 @app.get("/candidates")
 def candidates():
     return DATABASE
 
+
 # 4️⃣ Dashboard Stats
 @app.get("/stats")
 def stats():
-    return {"total":len(DATABASE)}
+    ranked = rank_candidates(DATABASE, JOB_SKILLS)
 
-# 5️⃣ Clear DB
+    total = len(ranked)
+    avg_score = sum(c["score"] for c in ranked) / total if total > 0 else 0
+    top_score = max((c["score"] for c in ranked), default=0)
+
+    return {
+        "total_candidates": total,
+        "average_score": round(avg_score, 2),
+        "top_score": round(top_score, 2)
+    }
+
+
+# 5️⃣ Clear Database
 @app.delete("/clear")
 def clear():
     DATABASE.clear()
-    return {"msg":"cleared"}
+    return {"message": "Database cleared successfully"}

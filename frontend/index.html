@@ -1,63 +1,243 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>Resume AI</title>
-<link rel="stylesheet"
-href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ResumeRank AI</title>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background: #f4f6f8;
+  color: #333;
+}
+
+header {
+  background: white;
+  padding: 20px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #ddd;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+header span {
+  background: #e8f5f3;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.container {
+  padding: 40px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 40px;
+}
+
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.card h3 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: gray;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.upload-box {
+  background: white;
+  border: 2px dashed #ccc;
+  padding: 40px;
+  text-align: center;
+  border-radius: 12px;
+  cursor: pointer;
+  margin-bottom: 40px;
+}
+
+.upload-box:hover {
+  background: #fafafa;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+th, td {
+  padding: 14px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+th {
+  background: #f8f9fa;
+  font-size: 13px;
+}
+
+.progress {
+  height: 8px;
+  background: #eee;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 8px;
+  background: #1abc9c;
+}
+
+.badge {
+  background: #eef2f7;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-right: 5px;
+  display: inline-block;
+}
+
+</style>
 </head>
+<body>
 
-<body class="container mt-4">
+<header>
+  <div>
+    <h1>ResumeRank AI</h1>
+    <small>Intelligent Resume Screening & Ranking</small>
+  </div>
+  <span>Score = 0.5 Skill + 0.3 Exp + 0.2 Edu</span>
+</header>
 
-<h2>AI Resume Screening</h2>
+<div class="container">
 
-<input type="file" id="file">
-<button class="btn btn-primary" onclick="upload()">Upload</button>
+  <div class="cards">
+    <div class="card">
+      <h3>TOTAL CANDIDATES</h3>
+      <h2 id="total">0</h2>
+    </div>
 
-<hr>
+    <div class="card">
+      <h3>TOP SCORE</h3>
+      <h2 id="topScore">0</h2>
+    </div>
 
-<input id="skills" placeholder="python,sql,react">
-<button class="btn btn-success" onclick="rank()">Rank</button>
+    <div class="card">
+      <h3>AVG SCORE</h3>
+      <h2 id="avgScore">0</h2>
+    </div>
 
-<table class="table mt-3" id="table"></table>
-<canvas id="chart"></canvas>
+    <div class="card">
+      <h3>UNIQUE SKILLS</h3>
+      <h2 id="uniqueSkills">0</h2>
+    </div>
+  </div>
+
+  <div class="upload-box" onclick="document.getElementById('fileInput').click()">
+    <h3>Drop PDF resumes here</h3>
+    <p>or click to browse</p>
+    <input type="file" id="fileInput" style="display:none" accept=".pdf" multiple onchange="uploadFiles(event)">
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Candidate</th>
+        <th>Skills</th>
+        <th>Exp</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+    <tbody id="candidateTable"></tbody>
+  </table>
+
+</div>
 
 <script>
-async function upload(){
- let file=document.getElementById("file").files[0];
- let form=new FormData();
- form.append("file",file);
 
- await fetch("http://127.0.0.1:8000/upload",{
-  method:"POST",
-  body:form
- });
- alert("Uploaded");
-}
+const API = "http://127.0.0.1:8000";
 
-async function rank(){
- let skills=document.getElementById("skills").value.split(",");
+async function uploadFiles(event) {
+  const files = event.target.files;
 
- let res=await fetch("http://127.0.0.1:8000/rank",{
-  method:"POST",
-  headers:{"Content-Type":"application/json"},
-  body:JSON.stringify(skills)
- });
+  for (let file of files) {
+    const formData = new FormData();
+    formData.append("file", file);
 
- let data=await res.json();
-
- let rows="<tr><th>Score</th></tr>";
- data.forEach(c=>rows+=`<tr><td>${c.score}</td></tr>`);
- document.getElementById("table").innerHTML=rows;
-
- new Chart(document.getElementById("chart"),{
-  type:"bar",
-  data:{
-   labels:data.map((_,i)=>"Candidate "+(i+1)),
-   datasets:[{label:"Score",data:data.map(c=>c.score)}]
+    await fetch(API + "/upload", {
+      method: "POST",
+      body: formData
+    });
   }
- });
+
+  loadData();
 }
+
+async function loadData() {
+  const statsRes = await fetch(API + "/stats");
+  const stats = await statsRes.json();
+
+  document.getElementById("total").innerText = stats.total_candidates;
+  document.getElementById("topScore").innerText = stats.top_score;
+  document.getElementById("avgScore").innerText = stats.average_score;
+
+  const rankRes = await fetch(API + "/rank");
+  const ranked = await rankRes.json();
+
+  const table = document.getElementById("candidateTable");
+  table.innerHTML = "";
+
+  let uniqueSkills = new Set();
+
+  ranked.forEach((c, index) => {
+    c.skills.forEach(s => uniqueSkills.add(s));
+
+    const row = `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${c.name}</td>
+        <td>
+          ${c.skills.map(skill => `<span class="badge">${skill}</span>`).join("")}
+        </td>
+        <td>${c.experience}</td>
+        <td>
+          <div class="progress">
+            <div class="progress-bar" style="width:${c.score * 100}%"></div>
+          </div>
+          ${c.score}
+        </td>
+      </tr>
+    `;
+
+    table.innerHTML += row;
+  });
+
+  document.getElementById("uniqueSkills").innerText = uniqueSkills.size;
+}
+
+loadData();
+
 </script>
 
 </body>
